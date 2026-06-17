@@ -1,0 +1,127 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    networks: [hireloop-net]
+
+  postgres-auth:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+    ports: ["5432:5432"]
+    networks: [hireloop-net]
+
+  postgres-progress:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: progress_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+    ports: ["5433:5432"]
+    networks: [hireloop-net]
+
+  postgres-interview:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: interview_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+    ports: ["5434:5432"]
+    networks: [hireloop-net]
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks: [hireloop-net]
+
+  gateway:
+    build: ./gateway
+    ports: ["4000:4000"]
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:4001
+      JOB_PARSER_URL: http://job-parser-service:4002
+      INTERVIEW_URL: http://interview-service:4003
+      EVALUATION_URL: http://evaluation-service:4004
+      PROGRESS_URL: http://progress-service:4005
+      NOTIFICATION_URL: http://notification-service:4006
+      FRONTEND_URL: http://localhost:3000
+    depends_on: [auth-service]
+    networks: [hireloop-net]
+
+  auth-service:
+    build: ./auth-service
+    ports: ["4001:4001"]
+    environment:
+      PORT: 4001
+      JWT_SECRET: supersecretkey_hireloop_2025
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgres://postgres:secret@postgres-auth:5432/auth_db
+      FRONTEND_URL: http://localhost:3000
+    depends_on: [redis, postgres-auth]
+    networks: [hireloop-net]
+
+  job-parser-service:
+    build: ./job-parser-service
+    ports: ["4002:4002"]
+    environment:
+      PORT: 4002
+      GROQ_API_KEY: ${GROQ_API_KEY}
+    networks: [hireloop-net]
+
+  interview-service:
+    build: ./interview-service
+    ports: ["4003:4003"]
+    environment:
+      PORT: 4003
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      DATABASE_URL: postgres://postgres:secret@postgres-interview:5432/interview_db
+      RABBITMQ_URL: amqp://rabbitmq:5672
+    depends_on: [rabbitmq, postgres-interview]
+    networks: [hireloop-net]
+
+  evaluation-service:
+    build: ./evaluation-service
+    ports: ["4004:4004"]
+    environment:
+      PORT: 4004
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      RABBITMQ_URL: amqp://rabbitmq:5672
+      PROGRESS_SERVICE_URL: http://progress-service:4005
+    depends_on: [rabbitmq]
+    networks: [hireloop-net]
+
+  progress-service:
+    build: ./progress-service
+    ports: ["4005:4005"]
+    environment:
+      PORT: 4005
+      DATABASE_URL: postgres://postgres:secret@postgres-progress:5432/progress_db
+    depends_on: [postgres-progress]
+    networks: [hireloop-net]
+
+  notification-service:
+    build: ./notification-service
+    ports: ["4006:4006"]
+    environment:
+      PORT: 4006
+      RABBITMQ_URL: amqp://rabbitmq:5672
+    depends_on: [rabbitmq]
+    networks: [hireloop-net]
+
+  frontend:
+    build: ./frontend
+    ports: ["3000:3000"]
+    environment:
+      VITE_API_URL: http://localhost:4000
+    depends_on: [gateway]
+    networks: [hireloop-net]
+
+networks:
+  hireloop-net:
+    driver: bridge
