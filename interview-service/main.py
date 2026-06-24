@@ -19,7 +19,7 @@ client = AsyncOpenAI(
     base_url="https://api.groq.com/openai/v1"
 )
 
-MODEL = "llama3-70b-8192"
+MODEL = "openai/gpt-oss-120b"
 
 class StartInterviewRequest(BaseModel):
     user_id: str
